@@ -6,13 +6,26 @@ const connectDB = require('./config/db');
 
 const app = express();
 
+const allowedOrigins = [
+  'http://localhost:4200',
+  'https://task-mgmt-app-fe.vercel.app'
+];
+
 app.use(cors({
-  // origin: 'http://localhost:4200', // Your Angular app Local URL
-  origin: 'https://task-manager-frontend.vercel.app', // Your Vercel URL
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,                           // ✅ Required for cookies
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// ✅ Handle preflight requests
+app.options('*', cors());
 
 app.use(express.json());
 connectDB();
