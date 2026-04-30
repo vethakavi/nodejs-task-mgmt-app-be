@@ -7,7 +7,9 @@ const connectDB = require('./config/db');
 const app = express();
 
 app.use(cors({
-  origin: 'http://localhost:4200', // Your Angular app URL
+  // origin: 'http://localhost:4200', // Your Angular app Local URL
+  origin: 'https://task-manager-frontend.vercel.app', // Your Vercel URL
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
