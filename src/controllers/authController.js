@@ -11,16 +11,40 @@ const cookieOptions = {
 };
 
 exports.register = async (req, res) => {
-  const {name, email, password} = req.body;
-  const hash = await bcrypt.hash(password, 10);
-  const user = await User.create({name, email, password: hash});
-  res.json(user);
+  try {
+    const {firstName, lastName, email, password, confirmPassword, phoneNo} =
+      req.body;
+    const existingUser = await User.findOne({email});
+    if (existingUser) {
+      return res.status(400).json({message: "Email already registered"});
+    }
+    const user = await User.create({
+      firstName,
+      lastName,
+      email,
+      password,
+      confirmPassword,
+      phoneNo,
+    });
+    user.password = undefined;
+    res.status(201).json({
+      message: "Registration successful",
+      user,
+    });
+  } catch (err) {
+    if (err.name === "ValidationError") {
+      const errors = Object.values(err.errors).map((e) => e.message);
+      return res.status(400).json({message: errors.join(", ")});
+    }
+    console.error(err);
+    res.status(500).json({message: "Server error"});
+  }
 };
 
 exports.login = async (req, res) => {
   try {
     const {email, password} = req.body;
-    const user = await User.findOne({email});
+    const user = await User.findOne({email}).select("+password");
     if (!user) {
       return res.status(400).json({message: "User not found"});
     }
@@ -33,9 +57,52 @@ exports.login = async (req, res) => {
     });
 
     res.cookie("access_token", token, cookieOptions);
-    const {password: _, ...userWithoutPassword} = user.toObject();
-    res.status(200).json({user: userWithoutPassword});
+    res.status(200).json(user);
   } catch (err) {
+    console.error(err);
+    res.status(500).json({message: "Server error"});
+  }
+};
+
+exports.checkUserExists = async (req, res) => {
+  try {
+    const {email} = req.query;
+    if (!email) {
+      return res
+        .status(400)
+        .json({message: "Email query parameter is required"});
+    }
+
+    const user = await User.findOne({email: email.toLowerCase().trim()});
+    return res.json({exists: !!user});
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({message: "Server error"});
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const {email, password} = req.body;
+    if (!email || !password) {
+      return res.status(400).json({message: "Email and password are required"});
+    }
+
+    const user = await User.findOne({email: email.toLowerCase().trim()});
+    if (!user) {
+      return res.status(404).json({message: "User not found"});
+    }
+
+    user.password = password;
+    user.confirmPassword = password;
+    await user.save();
+
+    res.status(200).json({message: "Password reset successfully"});
+  } catch (err) {
+    if (err.name === "ValidationError") {
+      const errors = Object.values(err.errors).map((e) => e.message);
+      return res.status(400).json({message: errors.join(", ")});
+    }
     console.error(err);
     res.status(500).json({message: "Server error"});
   }
@@ -66,20 +133,29 @@ exports.getUser = async (req, res) => {
 
 exports.updateUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({error: "User not found"});
-    }
+    const allowed = ["firstName", "lastName", "email", "phoneNo"];
+    const updateData = {};
 
-    const allowed = ["name", "email", "phone", "bio"];
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
-        user[key] = req.body[key];
+        updateData[key] = req.body[key];
       }
     }
 
-    await user.save();
-    res.json(user);
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      {$set: updateData},
+      {
+        returnDocument: "after",
+        runValidators: false,
+        select: "-password -confirmPassword",
+      },
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({error: "User not found"});
+    }
+    res.json(updatedUser);
   } catch (err) {
     console.error(err);
     res.status(500).json({error: "Server error"});
